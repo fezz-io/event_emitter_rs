@@ -310,7 +310,6 @@ impl EventEmitter {
         return id;
     }
 
-    /// NOT IMPLEMENTED!
     /// Emits an event of the given parameters in a synchronous fashion.
     /// Instead of executing each callback in a newly spawned thread, it will execute each callback in the order that they were inserted.
     ///
@@ -328,8 +327,36 @@ impl EventEmitter {
     /// // The value can be of any type
     /// event_emitter.sync_emit("Some event", "Hello programmer!");
     /// ```
-    pub fn sync_emit<T>(&self, event: &str, value: T) 
+    pub fn sync_emit<T>(&mut self, event: &str, value: T)
         where T: Serialize
     {
+        if let Some(listeners) = self.listeners.get_mut(event) {
+            let bytes: Vec<u8> = bincode::serialize(&value).unwrap();
+
+            let mut listeners_to_remove: Vec<usize> = Vec::new();
+            for (index, listener) in listeners.iter_mut().enumerate() {
+                let cloned_bytes = bytes.clone();
+                let callback = Arc::clone(&listener.callback);
+
+                match listener.limit {
+                    None => {
+                        callback(cloned_bytes);
+                    },
+                    Some(limit) => {
+                        if limit != 0 {
+                            callback(cloned_bytes);
+                            listener.limit = Some(limit - 1);
+                        } else {
+                            listeners_to_remove.push(index);
+                        }
+                    }
+                }
+            }
+
+            // Reverse here so we don't mess up the ordering of the vector
+            for index in listeners_to_remove.into_iter().rev() {
+                listeners.remove(index);
+            }
+        }
     }
 }
